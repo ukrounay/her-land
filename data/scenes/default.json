@@ -1,0 +1,17 @@
+{
+    "biome": "biome_0",
+    "tiles": [
+        {
+            "id": "grass",
+            "pos": [0, 0]
+        },
+        {
+            "id": "ground",
+            "pos": [0, 1]
+        },
+        {
+            "id": "stone",
+            "pos": [0, 2]
+        }
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "player": "DDIIIIIIIOOOOOOOOOOOOOOOOOOOOOOOOOO.png",
+    "tiles": {
+        "dirt": "DDIIIIIIIOOOOOOOOOOOOOOOOOOOOOOOOOO.png",
+        "grass": "DDIIIIIIIOOOOOOOOOOOOOOOOOOOOOOOOOO.png",
+        "stone": "DDIIIIIIIOOOOOOOOOOOOOOOOOOOOOOOOOO.png"
+    },
+    "background": {
+        "DDIIIIIIIOOOOOOOOOOOOOOOOOOOOOOOOOO": [
+            "DDIIIIIIIOOOOOOOOOOOOOOOOOOOOOOOOOO.png"
+        ]
+    }
+}

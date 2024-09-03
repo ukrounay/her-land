@@ -1,0 +1,7 @@
+{
+    "move_left": "K_a",
+    "move_right": "K_d",
+    "jump": "K_SPACE",
+    "crouch": "K_LSHIFT",
+    "sprint": "K_LCTRL"
+}
