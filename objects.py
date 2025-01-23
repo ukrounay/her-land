@@ -72,9 +72,9 @@ def set_quad(matrix, start, end):
 class GameObject(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, texture, layer, gravity):
         super().__init__()
-
         self.position = vec2(x, y)
-        self.velocity = vec2()
+        self.prev_position = vec2(x, y)
+        self.velocity = vec2(0, 0)
         self.view_offset = vec2()
         self.width = width
         self.height = height
@@ -92,6 +92,9 @@ class GameObject(pygame.sprite.Sprite):
         self.rect.height = self.height
         self.rect.width = self.width
     
+    def get_current_velocity(self):
+        return self.position - self.prev_position
+
     def get_display_rect(self, camera):
         pos = self.position * camera.get_scale() + camera.offset
         return pygame.Rect(pos.x, pos.y, pos.x + self.width * camera.get_scale(), pos.y + self.height * camera.get_scale())
@@ -119,7 +122,8 @@ class PlayerObject(GameObject):
         self.direction = PlayerDirection.RIGHT
 
     def move_left(self):
-        self.velocity.x += -1 if self.velocity.x > -self.max_movement_speed else 0
+        current_velocity = self.get_current_velocity()
+        self.velocity.x += -1 if current_velocity.x > -self.max_movement_speed else 0
         self.direction = PlayerDirection.LEFT
         self.update_state()
 
@@ -128,18 +132,21 @@ class PlayerObject(GameObject):
         self.direction = PlayerDirection.RIGHT
         self.update_state()
 
-    def update(self, interactable_objects):
+    def update(self, interactable_objects, dt):
         """ Move the player. """
         # Gravity
-        self.apply_forces()
+        self.apply_forces(dt)
+
+        self.velocity += self.get_current_velocity()
  
         # Move left/right
-        self.position.x += self.velocity.x * self.get_speed_modifier()
+        self.position.x += self.velocity.x * self.get_speed_modifier() * dt
         self.update_rect()
 
  
         # See if we hit anything
         hit_list = pygame.sprite.spritecollide(self, interactable_objects, False)
+        if bool(hit_list): self.velocity.x = 0
         for obj in hit_list:
             # If we are moving right,
             # set our right side to the left side of the item we hit
@@ -150,11 +157,12 @@ class PlayerObject(GameObject):
                 self.position.x = obj.rect.right
  
         # Move up/down
-        self.position.y += self.velocity.y
+        self.position.y += self.velocity.y * dt
         self.update_rect()
 
         # Check and see if we hit anything
         hit_list = pygame.sprite.spritecollide(self, interactable_objects, False)
+        if bool(hit_list): self.velocity.y = 0
         for obj in hit_list:
  
             # Reset our position based on the top/bottom of the object.
@@ -169,11 +177,11 @@ class PlayerObject(GameObject):
         self.update_rect()
         self.update_state()
  
-    def apply_forces(self):
+    def apply_forces(self, dt):
         """ Calculate effect of gravity and friction. """
 
-        self.velocity.x *= FRICTION_COEFFICIENT
-        self.velocity.y += GRAVITY
+        self.velocity.x *= FRICTION_COEFFICIENT * dt
+        self.velocity.y += GRAVITY * dt
 
         if abs(self.velocity.x) < 0.5: self.velocity.x = 0
 
@@ -233,7 +241,52 @@ class TileObject(GameObject):
         super().__init__(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE, texture, layer, False)
         self.tile_pos = vec2(x, y)
         self.tile_type = tile_type
+        self.state = [1,1]
 
+    def draw(self, camera):
+        start, end = self.get_display_bounds(camera)
+        draw_quad(self.texture, self.get_uv_matrix(), start, end)
+
+    def get_uv_matrix(self):
+        uv = [
+            [self.state[0]/6,       (self.state[1] + 1)/4],
+            [(self.state[0] + 1)/6, (self.state[1] + 1)/4],
+            [(self.state[0] + 1)/6, self.state[1]/4],
+            [self.state[0]/6,       self.state[1]/4]
+        ]
+        print(self.state, uv)
+        return uv
+        
+    
+    def update_state(self, neighbours):
+        """
+        top, left, bottom, right
+        """
+        match neighbours:
+            case [0,0,0,0]: self.state = [3,3] 
+
+            case [0,0,1,1]: self.state = [0,0] 
+            case [0,1,1,1]: self.state = [0,1] 
+            case [0,1,1,0]: self.state = [0,2] 
+
+            case [1,0,1,1]: self.state = [1,0] 
+            # case [1,1,1,1]: self.state = [1,1] 
+            case [1,1,1,0]: self.state = [1,2] 
+
+            case [1,0,0,1]: self.state = [2,0] 
+            case [1,1,0,1]: self.state = [2,1] 
+            case [1,1,0,0]: self.state = [2,2] 
+
+            case [0,0,1,0]: self.state = [3,0] 
+            case [1,0,1,0]: self.state = [3,1] 
+            case [1,0,0,0]: self.state = [3,2] 
+
+            case [0,0,0,1]: self.state = [0,3] 
+            case [0,1,0,1]: self.state = [1,3] 
+            case [0,1,0,0]: self.state = [2,3] 
+
+            case _: self.state = [1,1] 
+        pass
 
 class PlayerState(Enum):
     IDLE_RIGHT = 0
@@ -315,7 +368,7 @@ class Camera:
         self.follow_point = fp
         self.last_follow_point_change = 0
 
-    def follow(self, go: GameObject): 
+    def follow(self, go: GameObject, dt): 
         if self.follow_point != FollowPoint.CENTER:
             self.last_follow_point_change += 1
             if self.last_follow_point_change > FOLLOW_POINT_RETURN_INTERVAL:
@@ -325,13 +378,13 @@ class Camera:
         if(object_center.x != screen_center.x):
             distance = abs(screen_center.x - object_center.x)
             direction = -1 if screen_center.x < object_center.x else 1
-            offset = min(max(distance / FPS, 0.2), distance)
+            offset = min(max(distance * dt, 0.2), distance)
             self.offset.x += direction * offset
 
         if(object_center.y != screen_center.y):
             distance = abs(screen_center.y - object_center.y)
             direction = -1 if screen_center.y - object_center.y < 0 else 1
-            offset = min(max(distance / FPS, 0.2), distance)
+            offset = min(max(distance * dt, 0.2), distance)
             self.offset.y += direction * offset
 
     def get_scale(self):

@@ -1,6 +1,7 @@
 {
     "player": "player.png",
     "tiles": {
+        "ground": "biomes/star_meadow/tiles/ground.png",
         "dirt": "dirt.png",
         "grass": "grass.png",
         "stone": "stone.png"
@@ -58,6 +59,13 @@
             "craftpix-net-558275/Clouds/Clouds 8/4.png",
             "craftpix-net-558275/Clouds/Clouds 8/5.png",
             "craftpix-net-558275/Clouds/Clouds 8/6.png"
+        ],
+        "star_meadow": [
+            "biomes/star_meadow/background/bg_0.png",
+            "biomes/star_meadow/background/bg_mount_0.png",
+            "biomes/star_meadow/background/bg_1.png",
+            "biomes/star_meadow/background/bg_mount_1.png",
+            "biomes/star_meadow/background/bg_2.png"
         ]
     }
 }
