@@ -10,6 +10,10 @@ from pygame.mixer import *
 from globals import *
 from objects import *
 
+import os
+current_file_directory = os.path.dirname(os.path.abspath(__file__))
+def get_abs_path(path):
+    return (current_file_directory + "/" + path).replace("\\", "/").replace("//", "/")
 
 # variables
 screenWidth = INITIAL_SCREEN_WIDTH
@@ -21,7 +25,7 @@ scale = 1.0
 pygame.init()
 screen = pygame.display.set_mode((INITIAL_SCREEN_WIDTH, INITIAL_SCREEN_HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
 pygame.display.set_caption('Her Land')
-icon = pygame.image.load('assets/icon.png') 
+icon = pygame.image.load(get_abs_path('assets/icon.png')) 
 pygame.display.set_icon(icon)
 
 # Initialize Pygame clock
@@ -55,12 +59,13 @@ def setup_screen(width, height, sceneWidth, sceneHeight):
 
 
 def play_sound(filename):
+    filename = get_abs_path(filename)
     pygame.mixer.init()
     pygame.mixer.music.load(filename)
     pygame.mixer.music.play()
 
 DEBUG_FONT_SIZE = 18
-font = pygame.font.Font("assets/fonts/elemental.ttf", DEBUG_FONT_SIZE)                                       
+font = pygame.font.Font(get_abs_path('/assets/fonts/elemental.ttf'), DEBUG_FONT_SIZE)                                       
 
 def drawText(x, y, text, color):         
     text_surface = font.render(text, True, color)
@@ -74,7 +79,8 @@ def draw_debug_info():
     color = (255, 255, 255, 255)
     text = [
         f"FPS: {clock.get_fps():.2f}",
-        f"pos: [x: {player.position.x:.0f} y: {player.position.y:.0f}]",
+        f"pos: [x: {player.position.x/TILE_SIZE:.0f} y: {player.position.y/TILE_SIZE:.0f}]",
+        f"vel: [x: {player.get_velocity().x:} y: {player.get_velocity().y:}]",
     ]
     for i in range(0, len(text)):
         drawText(4, 4 + i * DEBUG_FONT_SIZE, text[i], color) 
@@ -119,6 +125,7 @@ test_texture = create_test_texture()
 # Helper function to load textures
 def load_texture(file):
     try:
+        file = get_abs_path(file)
         texture_surface = pygame.image.load(file)
         texture_data = pygame.image.tostring(texture_surface, "RGBA", 1)
         width, height = texture_surface.get_size()
@@ -138,6 +145,8 @@ def load_texture(file):
 
 # Load texture paths from JSON
 def load_textures_from_json(json_file):
+    json_file = get_abs_path(json_file)
+
     with open(json_file) as f:
         texture_map = json.load(f)
 
@@ -160,6 +169,8 @@ def load_textures_from_json(json_file):
 
 # Load sound paths from JSON
 def load_sounds_from_json(json_file):
+    json_file = get_abs_path(json_file)
+
     with open(json_file) as f:
         sound_map = json.load(f)
 
@@ -179,6 +190,16 @@ def load_sounds_from_json(json_file):
             sounds[key] = os.path.join('assets/sounds', value)
 
     return sounds
+
+# setup_screen(screenWidth, screenHeight, screenWidth, screenHeight)
+# there will be a loading scree
+
+def get_texture(texture_key):
+    return textures[texture_key][0]
+
+def draw(obj, camera):
+    start, end = obj.get_display_bounds(camera)
+    draw_quad(obj.texture, obj.get_uv(), start, end)
 
 # Load data from the JSON file
 textures = load_textures_from_json('assets/textures.json')
@@ -200,118 +221,22 @@ camera = Camera()
 setup_screen(screenWidth, screenHeight, sceneWidth, sceneHeight)
 
 
-player = PlayerObject(0, - textures['player'][2] * 2, textures['player'][1], textures['player'][2], textures['player'][0], 0, True)
 
-ground_tiles = [[]]
-
-# for x in range(-20, 20):
-#     for y in range(0, 15):
-#         tile_type = 'dirt'
-#         if y == 0:
-#             tile_type = 'grass'
-#         if y > 6:
-#             tile_type = 'stone'
-#         ground_tiles.append(TileObject(x, y, textures['tiles'][tile_type][0], 1, tile_type))
-
-# chunk_0_0 = [[TileObject(x, y, textures['tiles']["ground"][0], 1, "ground") for x in range(0, 15)] for y in range(0, 15)]
-# map = [[None for _ in range(0, 7)] for _ in range(0, 7)]
-# map[0][0] = chunk_0_0
-
-# for u in range(0, 127):
-#     for v in range(0, 127):          
-#         cx, cy = int(u/8), int(v/8)
-#         x, y = u%16, v%16
-#         neighbours = [0,0,0,0] 
-#         if(y > 0):   neighbours[0] = int(bool(map[cx][cy][x    ][y - 1]))
-#         if(x > 0):   neighbours[1] = int(bool(map[cx][cy][x - 1][y    ]))
-#         if(y < 127): neighbours[2] = int(bool(map[cx][cy][x    ][y + 1]))
-#         if(x < 127): neighbours[3] = int(bool(map[cx][cy][x + 1][y    ]))
-#         map[cx][cy][x][y].update_state(neighbours)
-
-
-class MapManager:
-    def __init__(self, map_size, chunk_size, textures):
-        self.map_size = map_size
-        self.chunk_size = chunk_size
-        self.textures = textures
-        self.map = [[None for _ in range(map_size)] for _ in range(map_size)]
-        self.initialize_chunks()
-    
-    def initialize_chunks(self):
-        # Initialize map with chunks of tiles
-        for cx in range(self.map_size):
-            for cy in range(self.map_size):
-                self.map[cx][cy] = [[TileObject(x, y, self.textures['tiles']["ground"][0], 1, "ground") 
-                                     for x in range(self.chunk_size)] 
-                                     for y in range(self.chunk_size)]
-    
-    def get_tile(self, global_x, global_y):
-        # Compute chunk and local tile coordinates
-        cx, cy = global_x // self.chunk_size, global_y // self.chunk_size
-        lx, ly = global_x % self.chunk_size, global_y % self.chunk_size
-        return self.map[cx][cy][lx][ly]
-
-
-    def update_tile(self, global_x, global_y):
-        # Compute chunk and local tile coordinates
-        cx, cy = global_x // self.chunk_size, global_y // self.chunk_size
-        lx, ly = global_x % self.chunk_size, global_y % self.chunk_size
-        
-        # Get neighbor presence array
-        neighbors = self.get_neighbors(cx, cy, lx, ly)
-        
-        # Update tile texture based on neighbors
-        tile = self.map[cx][cy][lx][ly]
-        tile.update_state(neighbors)
-    
-    def get_neighbors(self, cx, cy, lx, ly):
-        # Determine neighbor presence: [top, left, bottom, right]
-        directions = [(-1, 0), (0, -1), (1, 0), (0, 1)]  # N, W, S, E
-        neighbors = [0, 0, 0, 0]
-        
-        for i, (dx, dy) in enumerate(directions):
-            nx, ny = lx + dx, ly + dy
-            ncx, ncy = cx, cy
-            
-            # Adjust chunk index if neighbor goes out of bounds
-            if nx < 0:
-                ncx -= 1
-                nx = self.chunk_size - 1
-            elif nx >= self.chunk_size:
-                ncx += 1
-                nx = 0
-            if ny < 0:
-                ncy -= 1
-                ny = self.chunk_size - 1
-            elif ny >= self.chunk_size:
-                ncy += 1
-                ny = 0
-            
-            # Check if neighbor exists
-            if 0 <= ncx < self.map_size and 0 <= ncy < self.map_size:
-                neighbor_chunk = self.map[ncx][ncy]
-                if neighbor_chunk is not None:
-                    neighbors[i] = int(bool(neighbor_chunk[nx][ny]))
-        
-        return neighbors
-    
-    def update_chunk(self, chunk_x, chunk_y):
-        # Update all tiles in the specified chunk
-        for lx in range(self.chunk_size):
-            for ly in range(self.chunk_size):
-                self.update_tile(chunk_x * self.chunk_size + lx, chunk_y * self.chunk_size + ly)
+player = Player(TILE_SIZE, textures['player'][2]*-10, textures['player'][1], textures['player'][2], textures['player'][0], 0) 
 
 
 # Create map manager
-map_manager = MapManager(map_size=7, chunk_size=16, textures=textures)
+map_manager = MapManager(map_size=1, chunk_size=16, textures=textures)
 map_manager.update_chunk(0, 0)
 
-game_objects = [player]
+environment = Environment(map_manager)
 
-
+environment.add_body(player)
 
 # Load keybinds from JSON file
 def load_keybinds(json_file):
+    json_file = get_abs_path(json_file)
+
     with open(json_file) as f:
         keybind_map = json.load(f)
 
@@ -326,36 +251,54 @@ def load_keybinds(json_file):
 keybinds = load_keybinds('data/default_keybinds.json')
 
 # Example of using the keybinds in your game loop
-def handle_input(camera, player, interactable_objects, background_layers):
+def handle_input(dt, camera, player, background_layers):
     keys = pygame.key.get_pressed()
 
     if keys[keybinds['move_left']]:
-        player.move_left()
+        player.move_left(dt)
         for layer in background_layers:
-            layer.scroll(-1, screenWidth)
-        global follow_point
-        camera.set_follow_point(FollowPoint.LEFT)
+            layer.scroll(-100*dt, screenWidth)
+        # camera.set_follow_point(FollowPoint.LEFT)
 
     if keys[keybinds['move_right']]:
-        player.move_right() 
+        player.move_right(dt) 
         for layer in background_layers:
-            layer.scroll(1, screenWidth)
-        camera.set_follow_point(FollowPoint.RIGHT)
+            layer.scroll(100*dt, screenWidth)
+        # camera.set_follow_point(FollowPoint.RIGHT)
 
     if keys[keybinds['jump']]:
-        player.jump(interactable_objects)
+        player.jump()
 
-    if keys[keybinds['crouch']]:
-        player.crouch(True)
-    else:
-        player.crouch(False)
+    # if keys[keybinds['crouch']]:
+    #     player.crouch(True)
+    # else:
+    #     player.crouch(False)
     
-    if keys[keybinds['sprint']]:
-        player.sprint()
+    # if keys[keybinds['sprint']]:
+    #     player.sprint()
 
 
 # Main game loop
 running = True
+
+
+# !!!!!
+# threading
+# for future, so game wont do unexpected things after window wasn't in focus
+# !!!!!
+
+# def game_logic_thread(running, client):
+#     while running:
+#         # Update game logic here
+#         pass
+
+# def game_render_thread(running, client):
+#     while running:
+#         # Render game here
+#         pass
+
+# threading.Thread(target=game_logic_thread, args=(running, client,), daemon=True).start()
+# threading.Thread(target=game_render_thread, args=(running, client,), daemon=True).start()
 
 while running:
     dt = clock.tick() / 1000.0  # Конвертуємо час у секунди
@@ -368,49 +311,93 @@ while running:
             width, height = event.size
             setup_screen(width, height, sceneWidth, sceneHeight)
 
+        if event.type == pygame.MOUSEBUTTONDOWN:  # Detect mouse button press
+            mouse_x, mouse_y = pygame.mouse.get_pos()  # Get mouse position
+            print(f"Mouse clicked at: ({mouse_x}, {mouse_y})")
+
+            # Call a function with the coordinates
+            def handle_click(x, y):
+                print(f"Handling click at {x}, {y}")
+
+            handle_click(mouse_x, mouse_y)
+
     # Clear the screen
     glClear(GL_COLOR_BUFFER_BIT)
 
     # Draw background layers
     for layer in sorted(background_layers, key = lambda l: l.layer):
-        layer.scroll(0.5, screenWidth)
-        layer.draw(screenWidth, screenHeight)
+        # layer.scroll(0.5, screenWidth)
+        layer.draw(camera, screenWidth, screenHeight)
 
 
-    current_regions = [int(player.position.x/10 + i) for i in range(-5, +5)]
-    interactable_objects = []
+
+    environment.update(dt, textures, camera)
+
+    # Update the map
+    cx, cy, lx, ly = map_manager.get_local_coords(player.position.x, player.position.y)
+    # map_manager.update_chunk(chunk_x - 1, chunk_y)
+    # map_manager.update_chunk(chunk_x + 1, chunk_y)
+    # map_manager.update_chunk(chunk_x, chunk_y - 1)
+    # map_manager.update_chunk(chunk_x, chunk_y + 1)
+    map_manager.update_chunk(cx, cy)
+    
+    if lx < map_manager.chunk_size/2: 
+        map_manager.update_chunk(cx - 1, cy)
+    else: 
+        map_manager.update_chunk(cx + 1, cy)
+
+    if ly < map_manager.chunk_size/2: 
+        map_manager.update_chunk(cx, cy - 1)
+    else: 
+        map_manager.update_chunk(cx, cy + 1)
+
     drawing_queue = []
 
-    player_size = vec2(player.width, player.height)
-    destination = vec2(2,2)*player.position - player.prev_position + player_size * 2
-    
-    for x in range(player.position.x - player_size.x, destination.x):
-        for y in range(player.position.y - player_size.y, destination.y):
+    # current_regions = [int(player.position.x/10 + i) for i in range(-5, +5)]
+
+    screen_size = vec2(screenWidth, screenHeight)
+    start = vec2i.from_vec2(((vec2() - camera.offset) / TILE_SIZE) / camera.get_scale()) - vec2i(3, 3)
+    end = vec2i.from_vec2(((screen_size - camera.offset) / TILE_SIZE) / camera.get_scale()) + vec2i(3, 3)
+    # print(start, end)
+    for x in range(start.x, end.x):
+        for y in range(start.y, end.y):
             tile = map_manager.get_tile(x, y)
-            interactable_objects.append(tile)
+            if tile is not None:
+                draw_quad(textures['tiles'][tile.tile_type][0], tile.get_uv(), *tile.get_display_bounds(camera))
 
-            if camera.renderBounds.colliderect(tile.get_display_rect(camera)):
-                drawing_queue.append(tile)
 
-    if len(drawing_queue) > 0:
-        drawing_queue.sort(key=lambda tile: tile.tile_type)
-        prev_type = drawing_queue[0].tile_type
-        glBindTexture(GL_TEXTURE_2D, drawing_queue[0].texture)
-        glBegin(GL_QUADS)
-        for tile in drawing_queue:
-            if tile.tile_type != prev_type:
-                glEnd()
-                glBindTexture(GL_TEXTURE_2D, tile.texture)
-                glBegin(GL_QUADS)
-                prev_type = tile.tile_type
-            start, end = tile.get_display_bounds(camera)
-            set_quad(tile.get_uv_matrix(), start, end)
-        glEnd()
+    # for chunk_rows in map_manager.map.values():
+    #     for chunk in chunk_rows:
+    #         if chunk is not None:
+    #             for tile in chunk:
+    #                 if tile is not None:
+    #                     # if camera.renderBounds.colliderect(tile.get_display_rect(camera)):
+    #                     draw_quad(textures['tiles'][tile.tile_type][0], tile.get_uv_matrix(), *tile.get_display_bounds(camera))
+
+
+
+    # if len(drawing_queue) > 0:
+    #     drawing_queue.sort(key=lambda tile: tile.tile_type)
+    #     prev_type = drawing_queue[0].tile_type
+    #     glBindTexture(GL_TEXTURE_2D, drawing_queue[0].texture)
+    #     glBegin(GL_QUADS)
+    #     for tile in drawing_queue:
+    #         if tile.tile_type != prev_type:
+    #             glEnd()
+    #             glBindTexture(GL_TEXTURE_2D, tile.texture)
+    #             glBegin(GL_QUADS)
+    #             prev_type = tile.tile_type
+    #         start, end = tile.get_display_bounds(camera)
+    #         set_quad(tile.get_uv_matrix(), start, end)
+    #     glEnd()
+
+    # for tile in drawing_queue:
+    #     draw_quad(tile.texture, tile.get_uv_matrix(), *tile.get_display_bounds(camera))
             
-    handle_input(camera, player, interactable_objects, background_layers)  
-    player.update(interactable_objects, dt)
+    handle_input(dt, camera, player, background_layers)  
+    # player.update(dt)
     camera.follow(player, dt)
-    player.draw(camera)
+    draw(player, camera)
     draw_debug_info()
 
     # Update display
@@ -420,6 +407,8 @@ while running:
         play_sound(random.choice(biome_background_music))
 
     # Limit the FPS
-    clock.tick()
+    # clock.tick()
 
 pygame.quit()
+
+

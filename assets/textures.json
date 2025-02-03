@@ -1,5 +1,8 @@
 {
     "player": "player.png",
+    "ui": {
+        "healthbar": "healthbar.png"
+    },
     "tiles": {
         "ground": "biomes/star_meadow/tiles/ground.png",
         "dirt": "dirt.png",
