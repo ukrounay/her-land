@@ -51,6 +51,18 @@ matrices = {
         [0, 1],
         [0, 0],
         [1, 0]
+    ],
+    "reflected_horisontal": [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1]
+    ],
+    "reflected_vertical_horisontal": [
+        [1, 0],
+        [0, 0],
+        [0, 1],
+        [1, 1]
     ]
 }
 
@@ -224,13 +236,9 @@ class Player(LivingEntity):
 
     def update(self, dt):
         super().update(dt)
-        if self.is_jumping:
-            self.accelerate(0, -9.8*2)
-        self.tick(dt)
 
     def tick(self, dt):
-        if self.is_jumping:
-            self.is_jumping = False
+        super().tick(dt)
 
     def get_uv(self):
         if self.get_velocity().x < 0:
@@ -302,7 +310,11 @@ class Environment(pygame.sprite.Group):
         for body in self.bodies:
             body.update_position(dt)
 
-    def update(self, dt, textures, camera, sub_steps=1):
+    def update(self, dt, sub_steps=1):
+        for body in self.bodies:
+            if isinstance(body, Entity):
+                body.update(dt)
+
         sub_dt = float(dt / sub_steps)
         for _ in range(sub_steps):
             self.apply_gravity()
@@ -453,11 +465,11 @@ class MapManager:
         self.chunk_size = chunk_size
         self.textures = textures
         self.map = {}
-        for cx in range(self.map_size):
-            for cy in range(self.map_size):
-                self.initialize_chunk(cx, cy)  
+        for cx in range(0, self.map_size):
+            for cy in range(0, self.map_size):
+                self.initialize_chunk(cx, cy, update_immediate=True)  
     
-    def initialize_chunk(self, cx, cy):
+    def initialize_chunk(self, cx, cy, update_immediate=False):
         # Initialize map with chunks of tiles
 
         global_x, global_y = cx * self.chunk_size, cy * self.chunk_size
@@ -467,10 +479,9 @@ class MapManager:
             for y in range(global_y, global_y + self.chunk_size)] 
             for x in range(global_x, global_x + self.chunk_size)]
         
-        self.update_chunk(cx, cy)
+        if update_immediate: self.update_chunk(cx, cy)
 
         
-    
     def get_local_coords(self, global_x, global_y):
         """Correct chunk calculation for negative coordinates"""
 
@@ -499,9 +510,8 @@ class MapManager:
         
         if chunk_key not in self.map:
             self.initialize_chunk(cx, cy)  # Initialize the chunk if it doesn't exist
-        
-        # Safely retrieve tile
-        return self.map[chunk_key][lx][ly]
+
+        return self.map[chunk_key][lx][ly] if chunk_key in self.map else None
 
 
     # def get_chunk(self, cx, cy):
@@ -512,54 +522,43 @@ class MapManager:
     #         print(f"Chunk out of bounds: ({cx}, {cy})")
     #     return chunk
 
-    def update_tile(self, global_x, global_y):
-        # Compute chunk and local tile coordinates
-        cx, cy, lx, ly = self.get_local_coords(global_x, global_y)
-        
-        # Get neighbor presence array
-        neighbors = self.get_neighbors(cx, cy, lx, ly)
-
-        # Update tile texture based on neighbors
-        tile = self.map[f'c{cx}_{cy}'][lx][ly]
+    def update_tile(self, global_x, global_y, update_neighbours=False):
+        tile = self.get_tile(global_x, global_y)
         if tile is not None:
-            tile.update_state(neighbors)
-    
-    def get_neighbors(self, cx, cy, lx, ly):
-        # Determine neighbor presence: [top, left, bottom, right]
-        directions = [(0, -1), (-1, 0), (0, 1), (1, 0)]  # N, W, S, E
-        neighbors = [0, 0, 0, 0]
-        
-        for i, (dx, dy) in enumerate(directions):
-            nx, ny = lx + dx, ly + dy
-            ncx, ncy = cx, cy
-            
-            # Adjust chunk index if neighbor goes out of bounds
-            if nx < 0:
-                ncx -= 1
-                nx = self.chunk_size - 1
-            elif nx >= self.chunk_size:
-                ncx += 1
-                nx = 0
-            if ny < 0:
-                ncy -= 1
-                ny = self.chunk_size - 1
-            elif ny >= self.chunk_size:
-                ncy += 1
-                ny = 0
-            
-            # Check if neighbor exists
-            # if 0 <= ncx < self.map_size and 0 <= ncy < self.map_size:
-            # Ensure chunk exists
-            chunk_key = f'c{cx}_{cy}'
-            
-            if chunk_key not in self.map:
-                self.initialize_chunk(cx, cy)  # Initialize the chunk if it doesn't exist
+            tile.update_state(self.get_neighbors(global_x, global_y))
 
-            neighbor_chunk = self.map[f'c{cx}_{cy}']
-            if neighbor_chunk is not None:
-                neighbors[i] = int(bool(neighbor_chunk[nx][ny]))
-        
-        return neighbors
+        if update_neighbours:
+            self.update_tile(global_x - 1, global_y, False)
+            self.update_tile(global_x + 1, global_y, False)
+            self.update_tile(global_x, global_y - 1, False)
+            self.update_tile(global_x, global_y + 1, False)
+
+    def delete_tile(self, global_x, global_y):
+        cx, cy, lx, ly = self.get_local_coords(global_x, global_y)
+        chunk_key = f'c{cx}_{cy}'
+        if chunk_key in self.map:
+            tile = self.map[chunk_key][lx][ly]
+            if tile is not None:
+                self.map[chunk_key][lx][ly] = None
+                self.update_tile(global_x, global_y, True)
+
+    def set_tile(self, global_x, global_y, tile_type):
+        cx, cy, lx, ly = self.get_local_coords(global_x, global_y)
+        chunk_key = f'c{cx}_{cy}'
+        if chunk_key in self.map:
+            tile = self.map[f'c{cx}_{cy}'][lx][ly]
+            if tile is None:
+                self.map[f'c{cx}_{cy}'][lx][ly] = Tile(global_x, global_y, 1, tile_type)
+                self.update_tile(global_x, global_y, True)
+            
+    def get_neighbors(self, global_x, global_y):
+        # Determine neighbor presence: [top, left, bottom, right]
+        return [
+            bool(self.get_tile(global_x, global_y - 1) is not None),
+            bool(self.get_tile(global_x - 1, global_y) is not None),
+            bool(self.get_tile(global_x, global_y + 1) is not None),
+            bool(self.get_tile(global_x + 1, global_y) is not None),
+        ]
     
     def update_chunk(self, chunk_x, chunk_y):
         print(f"Updating chunk: ({chunk_x}, {chunk_y})")
@@ -614,10 +613,8 @@ class BackgroundLayer:
         glTexCoord2f(0 + self.offset, 0); glVertex2f(left, top + height)
         glEnd()
 
-    def scroll(self, direction, screenWidth):
-        self.offset += direction * self.speed / screenWidth
-        if self.offset > 1.0 or self.offset < -1.0:
-            self.offset = 0
+    def scroll(self, offset, screenWidth):
+        self.offset = -offset * self.speed / screenWidth
 
 
 # # Ground class
@@ -656,6 +653,7 @@ class Camera:
         self.last_follow_point_change = 0
 
     def follow(self, body, dt): 
+        if body is None: return
         velocity = body.get_velocity()
         if velocity.x > 0.1: self.set_follow_point(FollowPoint.RIGHT)
         elif velocity.x < -0.1: self.set_follow_point(FollowPoint.LEFT)

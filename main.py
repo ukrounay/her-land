@@ -211,7 +211,7 @@ bg_source = textures['background'][biome_name]
 
 biome_background_music = sounds["background_music"][biome_name]
 
-background_layers = [BackgroundLayer(bg_source[i], speed = 1 - 1 / (i + 1), layer = i - len(bg_source)) for i in range(0, len(bg_source), 1)]
+background_layers = [BackgroundLayer(bg_source[i], speed = 0.1*(1 - 1 / (i + 1)), layer = i - len(bg_source)) for i in range(0, len(bg_source), 1)]
 
 sceneWidth = background_layers[0].width
 sceneHeight = background_layers[0].height
@@ -231,7 +231,6 @@ map_manager.update_chunk(0, 0)
 
 environment = Environment(map_manager)
 
-environment.add_body(player)
 
 # Load keybinds from JSON file
 def load_keybinds(json_file):
@@ -256,14 +255,14 @@ def handle_input(dt, camera, player, background_layers):
 
     if keys[keybinds['move_left']]:
         player.move_left(dt)
-        for layer in background_layers:
-            layer.scroll(-100*dt, screenWidth)
+        # for layer in background_layers:
+        #     layer.scroll(-100*dt, screenWidth)
         # camera.set_follow_point(FollowPoint.LEFT)
 
     if keys[keybinds['move_right']]:
         player.move_right(dt) 
-        for layer in background_layers:
-            layer.scroll(100*dt, screenWidth)
+        # for layer in background_layers:
+        #     layer.scroll(100*dt, screenWidth)
         # camera.set_follow_point(FollowPoint.RIGHT)
 
     if keys[keybinds['jump']]:
@@ -276,6 +275,7 @@ def handle_input(dt, camera, player, background_layers):
     
     # if keys[keybinds['sprint']]:
     #     player.sprint()
+
 
 
 # Main game loop
@@ -300,8 +300,15 @@ running = True
 # threading.Thread(target=game_logic_thread, args=(running, client,), daemon=True).start()
 # threading.Thread(target=game_render_thread, args=(running, client,), daemon=True).start()
 
+selected_object = None
+time_after_loading = 0
+player_loaded = False
 while running:
     dt = clock.tick() / 1000.0  # Конвертуємо час у секунди
+
+
+
+        
 
     for event in pygame.event.get():
         if event.type == QUIT:
@@ -326,19 +333,15 @@ while running:
 
     # Draw background layers
     for layer in sorted(background_layers, key = lambda l: l.layer):
-        # layer.scroll(0.5, screenWidth)
+        layer.scroll(camera.offset.x, screenWidth)
         layer.draw(camera, screenWidth, screenHeight)
 
 
 
-    environment.update(dt, textures, camera)
+    environment.update(dt, sub_steps=4)
 
     # Update the map
     cx, cy, lx, ly = map_manager.get_local_coords(player.position.x, player.position.y)
-    # map_manager.update_chunk(chunk_x - 1, chunk_y)
-    # map_manager.update_chunk(chunk_x + 1, chunk_y)
-    # map_manager.update_chunk(chunk_x, chunk_y - 1)
-    # map_manager.update_chunk(chunk_x, chunk_y + 1)
     map_manager.update_chunk(cx, cy)
     
     if lx < map_manager.chunk_size/2: 
@@ -351,10 +354,6 @@ while running:
     else: 
         map_manager.update_chunk(cx, cy + 1)
 
-    drawing_queue = []
-
-    # current_regions = [int(player.position.x/10 + i) for i in range(-5, +5)]
-
     screen_size = vec2(screenWidth, screenHeight)
     start = vec2i.from_vec2(((vec2() - camera.offset) / TILE_SIZE) / camera.get_scale()) - vec2i(3, 3)
     end = vec2i.from_vec2(((screen_size - camera.offset) / TILE_SIZE) / camera.get_scale()) + vec2i(3, 3)
@@ -364,40 +363,52 @@ while running:
             tile = map_manager.get_tile(x, y)
             if tile is not None:
                 draw_quad(textures['tiles'][tile.tile_type][0], tile.get_uv(), *tile.get_display_bounds(camera))
-
-
-    # for chunk_rows in map_manager.map.values():
-    #     for chunk in chunk_rows:
-    #         if chunk is not None:
-    #             for tile in chunk:
-    #                 if tile is not None:
-    #                     # if camera.renderBounds.colliderect(tile.get_display_rect(camera)):
-    #                     draw_quad(textures['tiles'][tile.tile_type][0], tile.get_uv_matrix(), *tile.get_display_bounds(camera))
-
-
-
-    # if len(drawing_queue) > 0:
-    #     drawing_queue.sort(key=lambda tile: tile.tile_type)
-    #     prev_type = drawing_queue[0].tile_type
-    #     glBindTexture(GL_TEXTURE_2D, drawing_queue[0].texture)
-    #     glBegin(GL_QUADS)
-    #     for tile in drawing_queue:
-    #         if tile.tile_type != prev_type:
-    #             glEnd()
-    #             glBindTexture(GL_TEXTURE_2D, tile.texture)
-    #             glBegin(GL_QUADS)
-    #             prev_type = tile.tile_type
-    #         start, end = tile.get_display_bounds(camera)
-    #         set_quad(tile.get_uv_matrix(), start, end)
-    #     glEnd()
-
-    # for tile in drawing_queue:
-    #     draw_quad(tile.texture, tile.get_uv_matrix(), *tile.get_display_bounds(camera))
             
     handle_input(dt, camera, player, background_layers)  
     # player.update(dt)
-    camera.follow(player, dt)
-    draw(player, camera)
+
+    if not player_loaded:
+        if time_after_loading > 3:
+            environment.add_body(player)
+            player_loaded = True
+        else:
+            time_after_loading += dt
+        camera.follow(map_manager.get_tile(0,0), dt)
+    else:
+        camera.follow(player, dt)
+
+
+    for body in environment.bodies:
+        draw(body, camera)
+
+    mouse_pos = ((vec2(*pygame.mouse.get_pos()) - camera.offset) / TILE_SIZE) / camera.get_scale()
+    mouse_pos = vec2i(math.floor(mouse_pos.x), math.floor(mouse_pos.y))
+    selection_pos = mouse_pos
+    
+    selected_object = map_manager.get_tile(selection_pos.x, selection_pos.y)
+    if selected_object is not None:
+        start, end = selected_object.get_display_bounds(camera)
+        draw_quad(textures["ui"]["selection"][0], matrices["normal"], start, end)
+        draw_quad(textures["ui"]["selection"][0], matrices["reflected_vertical"], start, end)
+        draw_quad(textures["ui"]["selection"][0], matrices["reflected_horisontal"], start, end)
+        draw_quad(textures["ui"]["selection"][0], matrices["reflected_vertical_horisontal"], start, end)
+    else :
+        glColor(1,1,1,0.5)
+        draw_quad(
+            textures["tiles"]["ground"][0], 
+            matrices["normal"], 
+            vec2((selection_pos.x) * TILE_SIZE * camera.get_scale(), selection_pos.y * TILE_SIZE * camera.get_scale()), 
+            vec2((selection_pos.x + 1) * TILE_SIZE * camera.get_scale(), (selection_pos.y + 1) * TILE_SIZE * camera.get_scale())
+        )
+        glColor(1,1,1,1)
+
+    mouse_clicked = pygame.mouse.get_pressed()
+    if mouse_clicked[0]:
+        map_manager.set_tile(selection_pos.x, selection_pos.y, "ground")
+
+    elif mouse_clicked[2] and selected_object is not None:
+        map_manager.delete_tile(selection_pos.x, selection_pos.y)
+
     draw_debug_info()
 
     # Update display

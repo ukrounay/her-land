@@ -8,11 +8,15 @@ class vec2:
         self.y = y
 
     def __add__(self, other):
-        return vec2(self.x + other.x, self.y + other.y)
+        if isinstance(other, vec2):
+            return vec2(self.x + other.x, self.y + other.y)
+        return vec2(self.x + other, self.y + other)        
 
     def __sub__(self, other):
-        return vec2(self.x - other.x, self.y - other.y)
-
+        if isinstance(other, vec2):
+            return vec2(self.x - other.x, self.y - other.y)
+        return vec2(self.x - other, self.y - other)
+    
     def __mul__(self, multiplier):
         if isinstance(multiplier, vec2):
             return vec2(self.x * multiplier.x, self.y * multiplier.y)
@@ -29,6 +33,9 @@ class vec2:
 
     def length(self):
         return np.sqrt(self.x ** 2 + self.y ** 2)
+    
+    def distance(self, other):
+        return (self - other).length()
 
     def normalized(self):
         length = self.length()
